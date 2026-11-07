@@ -153,3 +153,64 @@ def test_offline_eval_does_not_regress(index):
     s = ev.summarize(ev.run_answers(index, cases, thr))
     assert s["answered"] >= 28 and s["refused"] >= 10
     assert s["cited"] == s["n_given"]
+
+
+# ---------- claude CLI adapter (no real CLI is run) ----------
+import subprocess  # noqa: E402
+
+from ragkit import llm as llm_mod  # noqa: E402
+
+
+class _Done:
+    def __init__(self, out, code=0, err=""):
+        self.stdout, self.returncode, self.stderr = out, code, err
+
+
+def _fake_cli(monkeypatch, done):
+    seen = {}
+    monkeypatch.setattr(llm_mod, "find_claude_exe", lambda: "claude-fake")
+
+    def run(cmd, **kw):
+        seen["cmd"], seen["kw"] = cmd, kw
+        return done
+    monkeypatch.setattr(subprocess, "run", run)
+    return seen
+
+
+def test_cli_adapter_runs_with_tools_off_and_prompt_on_stdin(monkeypatch):
+    seen = _fake_cli(monkeypatch, _Done(json.dumps({"result": '{"answer": "x", "citations": []}', "is_error": False})))
+    out = llm_mod.make_llm("claude-cli:sonnet")("SYSTEM TEXT", "USER TEXT")
+    assert out == '{"answer": "x", "citations": []}'
+    cmd = seen["cmd"]
+    assert cmd[cmd.index("--model") + 1] == "sonnet"
+    assert cmd[cmd.index("--tools") + 1] == ""
+    assert cmd[cmd.index("--system-prompt") + 1] == "SYSTEM TEXT"
+    assert "USER TEXT" not in cmd and seen["kw"]["input"] == "USER TEXT"
+    assert seen["kw"]["cwd"] != os.getcwd()  # an empty temp folder, so no project instructions load
+
+
+def test_cli_adapter_defaults_to_haiku(monkeypatch):
+    seen = _fake_cli(monkeypatch, _Done(json.dumps({"result": "ok"})))
+    llm_mod.make_llm("claude-cli:")("s", "u")
+    assert seen["cmd"][seen["cmd"].index("--model") + 1] == "haiku"
+
+
+@pytest.mark.parametrize("done", [_Done("not json", 1, "boom"), _Done(json.dumps({"is_error": True, "result": "auth"}), 1),
+                                  _Done(json.dumps({"result": "x"}), 2)])
+def test_cli_errors_raise_and_become_refusals(monkeypatch, index, done):
+    _fake_cli(monkeypatch, done)
+    res = answer("How many vessels does Tidewater run?", index, llm=llm_mod.make_llm("claude-cli:haiku"))
+    assert res["refused"] and res["reason"] == "model error: RuntimeError"
+
+
+def test_missing_cli_is_a_clear_error(monkeypatch):
+    monkeypatch.setattr(llm_mod, "find_claude_exe", lambda: None)
+    with pytest.raises(RuntimeError, match="claude CLI not found"):
+        llm_mod.make_llm("claude-cli:haiku")
+
+
+def test_claude_exe_env_override(monkeypatch, tmp_path):
+    exe = tmp_path / "claude.exe"
+    exe.write_text("")
+    monkeypatch.setenv("CLAUDE_EXE", str(exe))
+    assert llm_mod.find_claude_exe() == str(exe)

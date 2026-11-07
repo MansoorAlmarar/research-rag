@@ -107,7 +107,10 @@ def main():
     else:
         thr, scores = tune_threshold(index, dev)
     rd, rt, rh = retrieval_stats(index, dev), retrieval_stats(index, test), retrieval_stats(index, hold)
-    sd, st, sh = (summarize(run_answers(index, x, thr, llm)) for x in (dev, test, hold))
+    all_rows = [run_answers(index, x, thr, llm) for x in (dev, test, hold)]
+    sd, st, sh = (summarize(r) for r in all_rows)
+    misses = [r for rows in all_rows for r in rows if (r["unanswerable"] and not r["refused"])
+              or (not r["unanswerable"] and (r["refused"] or not r.get("fact", True)))]
     mode = f"live: {a.live}" if a.live else "offline: BM25 + extractive answers"
     lines = [f"# RAG eval ({mode})", "",
              f"- Corpus: {len(index.chunks)} chunks from {len({c.doc for c in index.chunks})} documents. Cases: {len(dev)} dev, {len(test)} test, {len(hold)} holdout.",
@@ -117,13 +120,19 @@ def main():
              f"| test | {rt['hit1']:.0%} | {rt['hit3']:.0%} | {rt['hit4']:.0%} | {rt['mrr']:.2f} |",
              f"| holdout | {rh['hit1']:.0%} | {rh['hit3']:.0%} | {rh['hit4']:.0%} | {rh['mrr']:.2f} |", "",
              "| Split | Answer and refusal |", "|---|---|", f"| dev | {fmt(sd)} |", f"| test | {fmt(st)} |", f"| holdout | {fmt(sh)} |"]
+    lines += ["", "Misses: none" if not misses else "Misses:"]
+    for r in misses:
+        kind = "answered an unanswerable question" if r["unanswerable"] else ("refused" if r["refused"] else "wrong fact")
+        lines.append(f"- `{r['id']}`: {kind}" + (f" ({r['reason']})" if r["reason"] else ""))
     if scores:
         lines += ["", "Dev accuracy by threshold: " + ", ".join(f"{t}: {v:.0%}" for t, v in scores.items())]
     text = "\n".join(lines) + "\n"
     print(text)
-    if not a.live and a.threshold is None:
+    if a.threshold is None:
         os.makedirs(os.path.join(HERE, "results"), exist_ok=True)
-        with open(os.path.join(HERE, "results", "offline-latest.md"), "w", encoding="utf-8") as f:
+        slug = "".join(ch if ch.isalnum() else "-" for ch in a.live).strip("-") if a.live else None
+        name = f"live-{slug}.md" if slug else "offline-latest.md"
+        with open(os.path.join(HERE, "results", name), "w", encoding="utf-8") as f:
             f.write(text)
 
 

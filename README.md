@@ -45,9 +45,25 @@ Offline run (`python evals/run.py`), BM25 + extractive answers:
 - A question naming one company still matched another company's chunk on shared words ("chief financial officer"). The entity filter fixed that.
 - The extractive answerer sometimes returned the chunk's title line as the "answer".
 
+## With a model
+
+Same retrieval and the same refusal gate, but a model writes the answer from the retrieved chunks and must cite them (`python evals/run.py --live claude-cli:haiku`, results in `evals/results/live-claude-cli-haiku.md`). Claude Haiku through the local `claude` CLI, scored on the same 40 questions:
+
+| Split | Answered | Refused | Right fact | Cited gold chunk |
+|---|---|---|---|---|
+| dev | 11/13 | 5/5 | 11/11 | 11/11 |
+| test | 11/13 | 5/5 | 11/11 | 11/11 |
+| **holdout** | 6/6 | 6/6 | 6/6 | 6/6 |
+
+Against the offline version, the model fixes the weak spot: it refused every unanswerable question, including the near-misses ("operating margin", "interest rate") that word overlap could not separate. What it still misses is on the answerable side:
+- `q18` and `q20` are refused by the lexical gate before the model sees them, because "operate" and "online" do not appear in the text ("640 stores", "e-commerce was 27%").
+- `q05` and `q09` reach the model, which says "not in the documents". An earlier run of the same model answered `q09`, so single runs vary by about one question. I ran it twice and did not average.
+
+How it was run: the CLI is called with all tools off, from an empty temporary folder (no project instructions), with the prompt on stdin. It uses a Claude subscription's plan usage and no API key. OpenRouter models also work (`--live provider/model`, needs a key; `:free` models work with $0 credit).
+
 ## What it does not do well (honest limits)
 
-- **Two holdout near-misses still get answered.** Asking for Orbit's *operating* margin, or the *interest rate* on Tidewater's debt, matches chunks that mention margin or interest. A word-overlap score cannot tell "margin" from "operating margin". Embeddings or a reranker would help, and so does letting a model decide (`--model`), which can say `NOT_IN_DOCUMENTS`. I have not scored the live model mode yet, so I make no claim about it.
+- **Two holdout near-misses still get answered.** Asking for Orbit's *operating* margin, or the *interest rate* on Tidewater's debt, matches chunks that mention margin or interest. A word-overlap score cannot tell "margin" from "operating margin". Embeddings or a reranker would help, and so does letting a model decide (`--model`), which can say `NOT_IN_DOCUMENTS`. That is what the "With a model" run above shows.
 - **Lexical only.** "Fraction" will not find "share", "online" will not find "e-commerce". Retrieval still scores 100% hit@3 here because the corpus is small and clean.
 - **Small, fake corpus and one labeller.** 40 questions on 5 invented documents. One question is 2.5 points. Real filings are longer, messier and contain tables, which this chunker does not parse.
 - **Threshold tuned on 18 dev questions.** It will not transfer to a different corpus without re-tuning.
@@ -60,10 +76,11 @@ pip install -r requirements.txt
 python ask.py "What was Helio Solar's gross margin guidance?"        # offline
 python ask.py --docs path/to/your/notes "your question"               # your own .md / .txt files
 python evals/run.py                                                   # offline eval, writes evals/results/
+python ask.py --model claude-cli:haiku "question"                            # Claude through the local CLI, no API key
 export OPENROUTER_API_KEY=...                                         # then, for model answers:
 python ask.py --model nvidia/nemotron-3-ultra-550b-a55b:free "question"
 python evals/run.py --live nvidia/nemotron-3-ultra-550b-a55b:free
-python -m pytest -q                                                   # 24 tests, offline, includes eval floors
+python -m pytest -q                                                   # 31 tests, offline, includes eval floors
 ```
 
 CI runs the tests (which include a regression floor on the eval) on every push and pull request. Keys are read from the environment and never printed. All sample documents are fictional.
@@ -78,4 +95,4 @@ CI runs the tests (which include a regression floor on the eval) on every push a
 | `ragkit/llm.py` | OpenRouter call |
 | `corpus/sample/` | 5 fictional company documents |
 | `evals/` | labelled cases, runner, results |
-| `tests/` | 24 offline tests |
+| `tests/` | 31 offline tests |
