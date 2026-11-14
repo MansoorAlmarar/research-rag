@@ -14,6 +14,17 @@ Not found in the documents.
 (low coverage)
 ```
 
+## Demo page
+
+A small local page for trying it in a browser (standard library only, no extra install):
+
+```
+python demo/server.py                            # offline answers, no key
+python demo/server.py --model claude-cli:haiku   # model answers, same options as ask.py
+```
+
+Then open http://127.0.0.1:8000. It shows the answer and the exact passages it cites, or "Not found in the documents" with the reason. It binds to localhost only.
+
 ## How it works
 
 1. **Chunk**: each `.md` / `.txt` file is split by `#` / `##` headings, long sections at sentence ends. Every chunk keeps its document title and heading, so "Fleet" is never just "Fleet".
