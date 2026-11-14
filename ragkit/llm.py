@@ -83,9 +83,13 @@ def make_llm(model, timeout=60, retries=1):
                 if r.status_code == 200:
                     return r.json()["choices"][0]["message"]["content"]
                 last = RuntimeError(f"HTTP {r.status_code}")
+                # Only a rate limit or a server error can succeed on a second try. A 400, 401 or 404 will not.
+                if r.status_code != 429 and r.status_code < 500:
+                    break
             except requests.RequestException as e:
                 last = e
-            time.sleep(2 * (attempt + 1))
+            if attempt < retries:  # no wait after the last try
+                time.sleep(2 * (attempt + 1))
         raise last
 
     return call

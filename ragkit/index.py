@@ -3,7 +3,7 @@ import math
 import os
 from collections import Counter
 
-from .text import Chunk, chunk_markdown, entities, tokens
+from .text import Chunk, capitalised_words, chunk_markdown, title_names, tokens  # noqa: F401 - Chunk is re-exported
 
 
 class Index:
@@ -18,13 +18,33 @@ class Index:
             df.update(t.keys())
         self.n = len(self.chunks)
         self.df = df
+        self.entity_docs = self._entity_docs()
+
+    def _entity_docs(self):
+        """Map each document name ("tidewater", "helio") to the documents it stands for.
+
+        The names come from the corpus, not from how the question is typed: they are the capitalised words of each
+        document's title. A title word that also appears in a document with a different title (a common word such as
+        "Report") is not a name, because it cannot tell two documents apart."""
+        names, words = {}, {}
+        for c, tf in zip(self.chunks, self.tf):
+            names.setdefault(c.doc, set()).update(title_names(c.title))
+            words.setdefault(c.doc, set()).update(tf)
+        out = {}
+        for doc, doc_names in names.items():
+            for w in doc_names:
+                if any(w in words[o] and w not in names[o] for o in words if o != doc):
+                    continue
+                out.setdefault(w, set()).add(doc)
+        return out
 
     @classmethod
     def from_folder(cls, folder, limit=700):
         chunks = []
         for name in sorted(os.listdir(folder)):
             if name.lower().endswith((".md", ".txt")):
-                with open(os.path.join(folder, name), encoding="utf-8") as f:
+                # errors="replace": one file in another encoding must not stop the whole folder from loading.
+                with open(os.path.join(folder, name), encoding="utf-8", errors="replace") as f:
                     chunks += chunk_markdown(name, f.read(), limit)
         if not chunks:
             raise ValueError(f"no .md or .txt documents in {folder}")
@@ -51,13 +71,26 @@ class Index:
             return 0.0
         return sum(self.idf(t) for t in q_terms if t in self.tf[i]) / total
 
+    def entities(self, query):
+        """Document names the question mentions, in any letter case: "tidewater's cfo" gives ["tidewater"]."""
+        return [t for t in dict.fromkeys(tokens(query)) if t in self.entity_docs]
+
     def search(self, query, k=4):
         """Top-k chunks as (chunk, bm25, coverage), best first."""
         q = list(dict.fromkeys(tokens(query)))
         if not q or not self.chunks:
             return []
-        ents = entities(query)
-        # A question that names a company only matches chunks about that company. A name found nowhere matches nothing.
-        pool = [i for i in range(self.n) if any(e in self.tf[i] for e in ents)] if ents else range(self.n)
+        ents = self.entities(query)
+        # A question that names a document's company only matches chunks from that document.
+        if ents:
+            docs = set().union(*(self.entity_docs[e] for e in ents))
+            pool = [i for i in range(self.n) if self.chunks[i].doc in docs]
+        else:
+            # Safety net: the question names no document but has a capitalised name the corpus never mentions
+            # ("What is the capital of France?"). Nothing here can answer it. Typed in lowercase, the same question
+            # skips this check and the coverage score decides.
+            if any(w not in self.df for w in capitalised_words(query)):
+                return []
+            pool = range(self.n)
         scored = sorted(((self.score(q, i), i) for i in pool), reverse=True)[:k]
         return [(self.chunks[i], s, self.coverage(q, i)) for s, i in scored]

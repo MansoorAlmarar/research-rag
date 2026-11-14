@@ -21,11 +21,22 @@ def stem(w):
 
 
 POSSESSIVE = re.compile(r"['’]s\b")
+TITLE_NAME = re.compile(r"\b[A-Z][A-Za-z]{2,}\b")
+
+
+def title_names(title):
+    """Capitalised words in a document title, lowercased and stemmed: "Tidewater Logistics, annual report" gives
+    tidewater and logistic. The index turns these into the list of names a question can be about (see Index)."""
+    words = TITLE_NAME.findall(POSSESSIVE.sub("", title))
+    return list(dict.fromkeys(stem(w.lower()) for w in words if w.lower() not in STOP))
+
+
 CAPITALISED = re.compile(r"\b[A-Z][a-z]{2,}\b")
 
 
-def entities(question):
-    """Capitalised words after the first word: names such as Tidewater or Kestrel. Used to keep an answer on the right company."""
+def capitalised_words(question):
+    """Capitalised words after the first word, lowercased and stemmed: likely names, such as France or Bloomberg.
+    Only a safety net (see Index.search). Which company a question is about is decided by the corpus, not by capitals."""
     words = list(CAPITALISED.finditer(POSSESSIVE.sub("", question)))
     return list(dict.fromkeys(stem(m.group().lower()) for m in words if m.start() > 0 and m.group().lower() not in STOP))
 
@@ -46,6 +57,7 @@ class Chunk:
     doc: str       # file name
     heading: str   # section heading, "" for the intro
     text: str      # chunk body (what the model sees)
+    title: str = ""  # document title (the `#` heading), "" if the file has none
 
 
 def _split_long(body, limit):
@@ -87,5 +99,5 @@ def chunk_markdown(doc_name, text, limit=700):
             continue
         for part in _split_long(b, limit):
             label = f"{title} / {h}" if h else title
-            chunks.append(Chunk(f"{stem_name}#{len(chunks)}", doc_name, h, f"{label}\n{part}"))
+            chunks.append(Chunk(f"{stem_name}#{len(chunks)}", doc_name, h, f"{label}\n{part}", title))
     return chunks

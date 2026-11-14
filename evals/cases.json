@@ -46,5 +46,9 @@
  {"id":"h09","split":"holdout","q":"What was Orbit Semiconductor's operating margin?","unanswerable":true,"note":"near miss: Orbit gross margin and Mosaic operating margin are in the corpus"},
  {"id":"h10","split":"holdout","q":"What interest rate does Tidewater pay on its debt?","unanswerable":true,"note":"near miss: debt and interest cover are in the corpus"},
  {"id":"h11","split":"holdout","q":"Which airline is Helio's biggest customer?","unanswerable":true},
- {"id":"h12","split":"holdout","q":"What analyst price target does Kestrel have?","unanswerable":true}
+ {"id":"h12","split":"holdout","q":"What analyst price target does Kestrel have?","unanswerable":true},
+ {"id":"n01","split":"test","q":"who is the chief financial officer of tidewater logistics?","unanswerable":true,"note":"near miss: u02 typed in lowercase. Added after the company filter stopped depending on capitals"},
+ {"id":"n02","split":"test","q":"what dividend per share does mosaic retail pay?","unanswerable":true,"note":"near miss: u05 typed in lowercase"},
+ {"id":"n03","split":"test","q":"Tidewater Logistics has which chief financial officer?","unanswerable":true,"note":"near miss: u02 reworded so the company is the first word"},
+ {"id":"n04","split":"test","q":"what is the capital of france?","unanswerable":true,"note":"u09 typed in lowercase. Not a near miss: an unknown name the capital-letter safety net cannot see"}
 ]
