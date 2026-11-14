@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Document Q&amp;A demo</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --text:#e8eaf0; --muted:#9aa3b2; --ok:#4cc38a; --warn:#f0b429; --accent:#6ea8fe; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui, Segoe UI, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  form { display:flex; gap:8px; }
+  input { flex:1; padding:12px 14px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); font:inherit; }
+  button { padding:12px 18px; border-radius:8px; border:0; background:var(--accent); color:#0b1220; font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.6; cursor:default; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 24px; }
+  .chip { background:var(--card); color:var(--text); border:1px solid var(--line); font-weight:400; font-size:14px; padding:6px 10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:12px; }
+  .label { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  .answer { font-size:18px; }
+  .refused { border-color:var(--warn); }
+  .refused .label { color:var(--warn); }
+  .sources .label { color:var(--ok); }
+  .src { border-top:1px solid var(--line); padding-top:10px; margin-top:10px; color:var(--muted); font-size:14px; }
+  .src b { color:var(--text); }
+  footer { margin-top:32px; color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ask the documents</h1>
+  <p class="sub">Five fictional company documents. Every answer shows its source, or says it is not in the documents.</p>
+  <form id="f">
+    <input id="q" autocomplete="off" maxlength="300" placeholder="Ask a question about the documents" aria-label="Question">
+    <button id="go" type="submit">Ask</button>
+  </form>
+  <div class="chips" id="chips"></div>
+  <div id="out" aria-live="polite"></div>
+  <footer>Personal project. Tested on 52 questions, 20 with no answer in the files; it declined all 20. Code: github.com/MansoorAlmarar/research-rag</footer>
+</main>
+<script>
+const EXAMPLES = [
+  "How many vessels does Tidewater run?",
+  "Who is the chief financial officer of Tidewater Logistics?",
+  "What was Helio Solar's gross margin for the quarter?",
+  "What is the capital of France?"
+];
+const out = document.getElementById("out"), q = document.getElementById("q"), go = document.getElementById("go");
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+EXAMPLES.forEach(t => {
+  const b = el("button", "chip", t); b.type = "button";
+  b.onclick = () => { q.value = t; ask(); };
+  document.getElementById("chips").appendChild(b);
+});
+
+async function ask() {
+  const question = q.value.trim();
+  if (!question) return;
+  go.disabled = true; out.replaceChildren(el("div", "card", "Searching the documents..."));
+  try {
+    const r = await fetch("/ask", { method: "POST", body: JSON.stringify({ question }) });
+    show(await r.json());
+  } catch (e) {
+    out.replaceChildren(el("div", "card refused", "Could not reach the demo server."));
+  }
+  go.disabled = false;
+}
+
+function show(d) {
+  out.replaceChildren();
+  if (d.error) { out.append(el("div", "card refused", d.error)); return; }
+  const a = el("div", d.refused ? "card refused" : "card");
+  a.append(el("div", "label", d.refused ? "Not answered" : "Answer"), el("div", "answer", d.answer));
+  if (d.refused && d.reason) a.append(el("div", "src", "Why: " + d.reason));
+  out.append(a);
+  if (d.sources.length) {
+    const s = el("div", "card sources"); s.append(el("div", "label", "Sources"));
+    d.sources.forEach(x => {
+      const row = el("div", "src"); const b = el("b", null, x.doc + " / " + x.title);
+      row.append(b, el("div", null, x.text)); s.append(row);
+    });
+    out.append(s);
+  }
+}
+
+document.getElementById("f").addEventListener("submit", e => { e.preventDefault(); ask(); });
+</script>
+</body>
+</html>
